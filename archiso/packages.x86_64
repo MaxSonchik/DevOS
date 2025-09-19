@@ -1,0 +1,34 @@
+# Ядро
+linux-zen
+
+#Загрузчики
+syslinux
+efibootmgr
+
+# Базовая система
+base
+arch-install-scripts
+systemd-sysvcompat
+
+# Файловая система
+btrfs-progs
+
+# Сеть
+networkmanager
+
+# Графическая среда (минимальный GNOME)
+gdm
+gnome-shell
+gnome-control-center
+nautilus
+gnome-terminal
+
+# Установщик
+calamares
+
+
+# Прочее
+git
+firefox
+
+# devos-tools-core 

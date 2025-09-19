@@ -1,0 +1,39 @@
+name: Build DevOS ISO
+
+on:
+  schedule:
+    - cron: '0 2 * * *'
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build ISO using archiso in Docker
+        run: |
+          docker run --rm --privileged -e GITHUB_RUN_ID=${{ github.run_id }} -v ${{ github.workspace }}:/data archlinux:latest \
+          /bin/bash -c "
+            pacman -Syu --noconfirm archiso;
+            
+            cat /data/pacman.conf
+            
+            sed -i \"s|https://maxsonchik.github.io/DevOS-repo|https://maxsonchik.github.io/DevOS-repo?v=${GITHUB_RUN_ID}|g\" /data/pacman.conf
+            
+            cat /data/pacman.conf
+            
+            pacman -Scc --noconfirm;
+
+            cd /data;
+            mkarchiso -v -w /tmp/archiso-work -o /data/out .
+          "
+
+      - name: Upload ISO as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DevOS-ISO
+          path: out/devos-*.iso
