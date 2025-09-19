@@ -44,4 +44,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: DevOS-ISO
-          path: archiso/out/devos-*.iso
+          path: out/devos-*.iso
