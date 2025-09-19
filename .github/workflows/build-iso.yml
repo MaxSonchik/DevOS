@@ -21,33 +21,47 @@ jobs:
 
       - name: Build ISO with Custom Packages
         run: |
-          docker run --rm --privileged -v ${{ github.workspace }}:/data archlinux:latest \
-          /bin/bash -c "
-            pacman -Syu --noconfirm base-devel git archiso;
-            useradd builder -m;
-            echo 'builder ALL=(ALL) NOPASSWD: /usr/bin/pacman' >> /etc/sudoers;
-            chown -R builder:builder /data;
+            docker run --rm --privileged -v ${{ github.workspace }}:/data archlinux:latest \
+            /bin/bash -c "
+            set -e  
 
-            su builder -c '
-              cd /data/packages && \
-              for dir in */ ; do
-                if [ -f \"\${dir}PKGBUILD\" ]; then
-                  cd \"\${dir}\" && \
-                  makepkg --noconfirm -scf && \
-                  mv *.pkg.tar.zst /data/repo/ && \
-                  cd .. ;
-                fi
-              done
-            '
+            echo \"--- Preparing Environment ---\"
+            pacman -Syu --noconfirm base-devel git archiso curl
+            useradd builder -m
+            echo 'builder ALL=(ALL) NOPASSWD: /usr/bin/pacman' >> /etc/sudoers
             
+            mkdir -p /data/repo
+            mkdir -p /data/packages 
+            chown -R builder:builder /data
+            
+            if [ -n \"\$(ls -A /data/packages)\" ]; then
+                su builder -c '
+                cd /data/packages && \
+                echo \"--- Building custom packages ---\" && \
+                for dir in */ ; do
+                    if [ -f \"\${dir}PKGBUILD\" ]; then
+                    echo \"Building package in \${dir}\" && \
+                    cd \"\${dir}\" && \
+                    makepkg --noconfirm -scf && \
+                    mv *.pkg.tar.zst /data/repo/ && \
+                    cd .. ;
+                    fi
+                done
+                '
+            else
+                echo \"--- No custom packages to build, skipping ---\"
+            fi
+            
+            echo \"--- Downloading Calamares ---\"
             curl -L -o /data/repo/calamares.pkg.tar.zst \"https://mirror.alpix.eu/endeavouros/repo/endeavouros/x86_64/calamares-3.3.6-1-x86_64.pkg.tar.zst\"
             
+            echo \"--- Creating local repository database ---\"
             repo-add /data/repo/devos-repo.db.tar.gz /data/repo/*.pkg.tar.zst
 
-            cd /data/archiso;
-            
+            echo \"--- Building ISO Image ---\"
+            cd /data/archiso
             mkarchiso -v -w /tmp/archiso-work -o /data/out .
-          "
+            "
       - name: Restore workspace ownership
         run: sudo chown -R $(whoami):$(whoami) .
 
