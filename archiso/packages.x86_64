@@ -4,6 +4,7 @@ linux-zen
 #Загрузчики
 syslinux
 efibootmgr
+grub
 
 # Базовая система
 base
@@ -12,6 +13,9 @@ systemd-sysvcompat
 
 # Файловая система
 btrfs-progs
+snapper
+snap-pac
+grub-btrfs
 
 # Сеть
 networkmanager

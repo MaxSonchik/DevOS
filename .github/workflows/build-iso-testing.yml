@@ -1,0 +1,55 @@
+name: Build DevOS ISO (Testing)
+
+on:
+  push:
+    branches: [ "arch" ] 
+    paths:
+      - 'repo/**'
+      - 'archiso/**'
+      - '.github/workflows/build-iso-testing.yml'
+  workflow_dispatch:
+
+jobs:
+  build-and-release-testing:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write 
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build ISO
+        run: |
+          docker run --rm --privileged -v ${{ github.workspace }}:/data archlinux:latest \
+          /bin/bash -c "
+            set -e 
+
+            echo '--- Preparing Environment ---'
+            pacman -Syu --noconfirm archiso
+
+            echo '--- Creating local repository database ---'
+            if [ -z \"\$(ls -A /data/repo/*.pkg.tar.zst 2>/dev/null)\" ]; then
+              echo \"WARNING: No package files found in /data/repo/. Building with official packages only.\"
+              mkdir -p /data/repo
+              repo-add /data/repo/devos-repo.db.tar.gz
+            else
+              repo-add /data/repo/devos-repo.db.tar.gz /data/repo/*.pkg.tar.zst
+            fi
+
+            echo '--- Building ISO Image ---'
+            cd /data/archiso
+            mkarchiso -v -w /tmp/archiso-work -o /data/out .
+          "
+
+      - name: Upload ISO to a new Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: test-build-${{ github.run_number }}
+          name: "Test Build ${{ github.run_number }} (arch branch)"
+          body: |
+            Автоматическая тестовая сборка из ветки `arch`.
+            Commit: `${{ github.sha }}`
+          files: |
+            out/devos-*.iso
+          prerelease: true

@@ -1,0 +1,12 @@
+pkgname=d-update
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Утилита для безопасного обновления системы и зеркал в DevOS"
+arch=('any')
+license=('GPL')
+depends=('pacman-contrib' 'reflector')
+install=d-update.install
+source=("$pkgname")
+package() {
+    install -Dm755 "$srcdir/$pkgname" "$pkgdir/usr/bin/$pkgname"
+}
