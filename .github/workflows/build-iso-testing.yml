@@ -1,4 +1,4 @@
-name: Build DevOS ISO (Testing)
+name: Build DevOS ISO (Testing with Releng Profile)
 
 on:
   push:
@@ -15,38 +15,39 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Build ISO with Diagnostics
+      - name: Build ISO using Releng Profile
         run: |
           docker run --rm --privileged -v ${{ github.workspace }}:/data archlinux:latest \
           /bin/bash -c "
-            set -e # Прерываем выполнение при любой ошибке
+            set -e
 
             echo '--- Preparing Environment ---'
             pacman -Syu --noconfirm archiso
 
+            echo '--- Copying official releng profile ---'
+            # Копируем официальный, 100% рабочий профиль в нашу папку archiso
+            cp -a /usr/share/archiso/configs/releng/. /data/archiso
+
+            echo '--- Modifying releng profile for DevOS ---'
+            # Хирургически изменяем скопированный профиль
+            # 1. Меняем метку диска в главном конфиге
+            sed -i 's/iso_label=\"ARCH_\"/iso_label=\"DEVOS\"/g' /data/archiso/profiledef.sh
+            
+            # 2. Меняем метку диска во всех конфигах загрузчиков
+            sed -i 's/archisolabel=\${iso_label}/archisolabel=DEVOS/g' /data/archiso/boot/grub/grub.cfg
+            sed -i 's/archisolabel=\${iso_label}/archisolabel=DEVOS/g' /data/archiso/efiboot/loader/entries/archiso_pxe-x86_64.conf
+            sed -i 's/archisolabel=\${iso_label}/archisolabel=DEVOS/g' /data/archiso/syslinux/archiso_sys.cfg
+
+            # 3. Добавляем наш локальный репозиторий в pacman.conf
+            echo -e \"\n[devos-repo]\nSigLevel = Optional TrustAll\nServer = file:///data/repo\" >> /data/archiso/pacman.conf
+
+            # 4. Добавляем наши пакеты в список установки
+            echo -e \"\n# DevOS Packages\ncalamares\ndevos-tools-core\ngnome-shell\ngnome-terminal\ngnome-control-center\nnautilus\nfirefox\n\" >> /data/archiso/packages.x86_64
+
             echo '--- Creating local repository database ---'
-            if [ -z \"\$(ls -A /data/repo/*.pkg.tar.zst 2>/dev/null)\" ]; then
-              echo \"WARNING: No package files found in /data/repo/. Building with official packages only.\"
-              mkdir -p /data/repo
-              repo-add /data/repo/devos-repo.db.tar.gz
-            else
-              repo-add /data/repo/devos-repo.db.tar.gz /data/repo/*.pkg.tar.zst
-            fi
+            repo-add /data/repo/devos-repo.db.tar.gz /data/repo/*.pkg.tar.zst
 
-            # --- !!! ДИАГНОСТИЧЕСКИЙ ШАГ !!! ---
-            # Мы распечатываем содержимое ключевых файлов, чтобы убедиться,
-            # что checkout скачал правильные версии.
-            echo '--- Verifying bootloader configs inside container ---'
-            echo '--- Contents of profiledef.sh: ---'
-            cat /data/archiso/profiledef.sh | grep 'iso_label'
-            echo '--- Contents of syslinux.cfg: ---'
-            cat /data/archiso/syslinux/syslinux.cfg | grep 'APPEND'
-            echo '--- Contents of archiso-x86_64.conf: ---'
-            cat /data/archiso/efiboot/loader/entries/archiso-x86_64.conf | grep 'options'
-            echo '--- Verification complete ---'
-
-
-            echo '--- Building ISO Image ---'
+            echo '--- Building ISO Image from modified releng profile ---'
             mkarchiso -v -w /tmp/archiso-work -o /data/out /data/archiso
           "
 
@@ -56,7 +57,7 @@ jobs:
           tag_name: test-build-${{ github.run_number }}
           name: "Test Build ${{ github.run_number }} (arch branch)"
           body: |
-            Автоматическая тестовая сборка из ветки `arch`.
+            Автоматическая тестовая сборка из ветки `arch` с использованием профиля `releng`.
             Commit: `${{ github.sha }}`
           files: |
             out/devos-*.iso
