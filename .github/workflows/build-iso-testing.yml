@@ -35,9 +35,9 @@ jobs:
             
             # 2. Меняем метку диска во всех конфигах загрузчиков
             sed -i 's/archisolabel=\${iso_label}/archisolabel=DEVOS/g' /data/archiso/grub/grub.cfg
-            sed -i 's/archisolabel=\${iso_label}/archisolabel=DEVOS/g' /data/archiso/efiboot/loader/entries/archiso_pxe-x8e6_64.conf
+            sed -i 's/archisolabel=\${iso_label}/archisolabel=DEVOS/g' /data/archiso/efiboot/loader/entries/archiso_pxe-x86_64.conf
             sed -i 's/archisolabel=\${iso_label}/archisolabel=DEVOS/g' /data/archiso/syslinux/archiso_sys.cfg
-            
+
             # 3. Добавляем наш локальный репозиторий в pacman.conf
             echo -e \"\n[devos-repo]\nSigLevel = Optional TrustAll\nServer = file:///data/repo\" >> /data/archiso/pacman.conf
 
