@@ -47,10 +47,7 @@ jobs:
 
 
             echo '--- Building ISO Image ---'
-            # --- !!! ИСПРАВЛЕННАЯ КОМАНДА СБОРКИ !!! ---
-            # Мы больше не делаем 'cd'. Мы явно указываем mkarchiso, где находится наш профиль.
-            # Это самый надежный способ.
-            mkarchiso -v -p /data/archiso -w /tmp/archiso-work -o /data/out
+            mkarchiso -v -w /tmp/archiso-work -o /data/out /data/archiso
           "
 
       - name: Upload ISO to a new Release
