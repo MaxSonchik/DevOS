@@ -2,28 +2,24 @@ name: Build DevOS ISO (Testing)
 
 on:
   push:
-    branches: [ "arch" ] 
-    paths:
-      - 'repo/**'
-      - 'archiso/**'
-      - '.github/workflows/build-iso-testing.yml'
+    branches: [ "arch" ]
   workflow_dispatch:
 
 jobs:
   build-and-release-testing:
     runs-on: ubuntu-latest
     permissions:
-      contents: write 
+      contents: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Build ISO
+      - name: Build ISO with Diagnostics
         run: |
           docker run --rm --privileged -v ${{ github.workspace }}:/data archlinux:latest \
           /bin/bash -c "
-            set -e 
+            set -e # Прерываем выполнение при любой ошибке
 
             echo '--- Preparing Environment ---'
             pacman -Syu --noconfirm archiso
@@ -37,9 +33,24 @@ jobs:
               repo-add /data/repo/devos-repo.db.tar.gz /data/repo/*.pkg.tar.zst
             fi
 
+            # --- !!! ДИАГНОСТИЧЕСКИЙ ШАГ !!! ---
+            # Мы распечатываем содержимое ключевых файлов, чтобы убедиться,
+            # что checkout скачал правильные версии.
+            echo '--- Verifying bootloader configs inside container ---'
+            echo '--- Contents of profiledef.sh: ---'
+            cat /data/archiso/profiledef.sh | grep 'iso_label'
+            echo '--- Contents of syslinux.cfg: ---'
+            cat /data/archiso/syslinux/syslinux.cfg | grep 'APPEND'
+            echo '--- Contents of archiso-x86_64.conf: ---'
+            cat /data/archiso/efiboot/loader/entries/archiso-x86_64.conf | grep 'options'
+            echo '--- Verification complete ---'
+
+
             echo '--- Building ISO Image ---'
-            cd /data/archiso
-            mkarchiso -v -w /tmp/archiso-work -o /data/out .
+            # --- !!! ИСПРАВЛЕННАЯ КОМАНДА СБОРКИ !!! ---
+            # Мы больше не делаем 'cd'. Мы явно указываем mkarchiso, где находится наш профиль.
+            # Это самый надежный способ.
+            mkarchiso -v -p /data/archiso -w /tmp/archiso-work -o /data/out
           "
 
       - name: Upload ISO to a new Release
