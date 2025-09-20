@@ -2,7 +2,7 @@
 # shellcheck disable=SC2034
 
 iso_name="devos"
-iso_label="DEVOS_$(date +%Y%m)"
+iso_label="DEVOS"
 iso_publisher="DevOS Project <https://your-website.com>"
 iso_application="DevOS Linux"
 iso_version="$(date +%Y.%m.%d)"
