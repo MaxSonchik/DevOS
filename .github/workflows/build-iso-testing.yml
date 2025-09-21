@@ -35,20 +35,17 @@ jobs:
 
             # 2. Добавляем наш репозиторий и пакеты
             echo -e \"\n[devos-repo]\nSigLevel = Optional TrustAll\nServer = file:///data/repo\" >> /data/archiso/pacman.conf
-            echo -e \"\n# DevOS Packages\ncalamares\ndevos-tools-core\ngdm\ngnome-shell\ngnome-terminal\ngnome-control-center\nnautilus\nfirefox\n\" >> /data/archiso/packages.x86_64
+            # --- ИЗМЕНЕНИЕ 1: Добавляем xorg-xinit, чтобы команда startx в принципе существовала ---
+            echo -e \"\n# DevOS Packages\ncalamares\ndevos-tools-core\ngdm\ngnome-shell\ngnome-terminal\ngnome-control-center\nnautilus\nfirefox\nxorg-xinit\n\" >> /data/archiso/packages.x86_64
 
-            # --- !!! НОВАЯ, ПРАВИЛЬНАЯ МАГИЯ ЗДЕСЬ !!! ---
             echo '--- Customizing Live Environment for Auto-Login ---'
-            
             # 3. Настраиваем getty@tty1 для автоматического входа пользователя root
-            # Создаем директорию для оверрайда сервиса
             mkdir -p /data/archiso/airootfs/etc/systemd/system/getty@tty1.service.d
-            # Создаем сам файл оверрайда
             echo -e '[Service]\nExecStart=\nExecStart=-/usr/bin/agetty --autologin root --noclear %I \$TERM' > /data/archiso/airootfs/etc/systemd/system/getty@tty1.service.d/autologin.conf
 
-            # 4. Добавляем в .bash_profile пользователя root команду для запуска GNOME
-            # Этот код выполнится сразу после автоматического входа в tty1
-            echo -e 'if [[ -z \$DISPLAY && \$XDG_VTNR -eq 1 ]]; then\n  exec startx\nfi' >> /data/archiso/airootfs/root/.bash_profile
+            # --- ИЗМЕНЕНИЕ 2: Пишем в правильный файл (.zprofile) для zsh ---
+            # 4. Добавляем в .zprofile пользователя root команду для запуска GNOME
+            echo -e 'if [[ -z \$DISPLAY && \$(fgconsole 2>/dev/null) -eq 1 ]]; then\n  exec startx\nfi' >> /data/archiso/airootfs/root/.zprofile
             
             # 5. Создаем файл .xinitrc для root, чтобы startx знал, что запускать
             echo -e 'exec gnome-session' > /data/archiso/airootfs/root/.xinitrc
