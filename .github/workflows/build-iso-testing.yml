@@ -49,9 +49,11 @@ jobs:
             ln -sf /usr/lib/systemd/system/gdm.service /data/archiso/airootfs/etc/systemd/system/multi-user.target.wants/gdm.service
             ln -sf /usr/lib/systemd/system/NetworkManager.service /data/archiso/airootfs/etc/systemd/system/multi-user.target.wants/NetworkManager.service
 
-            # 5. Создаем .desktop файл для авто-запуска Calamares (это остается)
+            # 5. Создаем .desktop файл для авто-запуска Calamares
             mkdir -p /data/archiso/airootfs/root/.config/autostart
-            echo -e '[Desktop Entry]\nName=Calamares\nExec=calamares_polkit\nType=Application\nIcon=calamares' > /data/archiso/airootfs/root/.config/autostart/calamares.desktop
+            mkdir -p /data/archiso/airootfs/root/Desktop
+            echo -e '[Desktop Entry]\nName=Install DevOS\nExec=sudo calamares\nType=Application\nIcon=system-installer' > /data/archiso/airootfs/root/Desktop/install.desktop
+            cp /data/archiso/airootfs/root/Desktop/install.desktop /data/archiso/airootfs/root/.config/autostart/
 
             echo '--- Creating local repository database ---'
             repo-add /data/repo/devos-repo.db.tar.gz /data/repo/*.pkg.tar.zst
