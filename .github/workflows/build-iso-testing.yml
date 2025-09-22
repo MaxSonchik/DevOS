@@ -33,23 +33,25 @@ jobs:
             sed -i 's/archisolabel=\${iso_label}/archisolabel=DEVOS/g' /data/archiso/grub/grub.cfg
             sed -i 's/archisolabel=\${iso_label}/archisolabel=DEVOS/g' /data/archiso/syslinux/archiso_sys.cfg
 
-            # 2. Добавляем наш репозиторий и пакеты. Убираем ненужный xorg-xinit.
+            # 2. Добавляем наш репозиторий и пакеты
             echo -e \"\n[devos-repo]\nSigLevel = Optional TrustAll\nServer = file:///data/repo\" >> /data/archiso/pacman.conf
-            echo -e \"\n# DevOS Packages\ncalamares\nyaml-cpp\ndevos-tools-core\ngdm\ngnome-shell\ngnome-terminal\ngnome-control-center\nnautilus\nfirefox\n\" >> /data/archiso/packages.x86_64
+            
+            # --- ИЗМЕНЕНИЕ ЗДЕСЬ: ПОЛНЫЙ СПИСОК ПАКЕТОВ ДЛЯ CALAMARES ---
+            echo -e \"\n# DevOS Packages\ndevos-tools-core\n\
+            # GNOME Environment\ngdm\ngnome-shell\ngnome-terminal\ngnome-control-center\nnautilus\nfirefox\n\
+            # Calamares and ALL its dependencies\ncalamares\nyaml-cpp\nkpmcore\nparted\nkcoreaddons\nki18n\nsolid\nbtrfs-progs\ndosfstools\nefibootmgr\n\" >> /data/archiso/packages.x86_64
 
-            # --- !!! НОВАЯ, ПРАВИЛЬНАЯ И ФИНАЛЬНАЯ МАГИЯ !!! ---
             echo '--- Customizing Live Environment for GDM Auto-Login ---'
-
-            # 3. Создаем конфигурацию для GDM, чтобы он автоматически логинил root
+            # 3. Конфигурация GDM для автологина
             mkdir -p /data/archiso/airootfs/etc/gdm
             echo -e '[daemon]\nAutomaticLoginEnable=true\nAutomaticLogin=root' > /data/archiso/airootfs/etc/gdm/custom.conf
 
-            # 4. Включаем сервисы GDM и NetworkManager
+            # 4. Включение сервисов
             mkdir -p /data/archiso/airootfs/etc/systemd/system/multi-user.target.wants
             ln -sf /usr/lib/systemd/system/gdm.service /data/archiso/airootfs/etc/systemd/system/multi-user.target.wants/gdm.service
             ln -sf /usr/lib/systemd/system/NetworkManager.service /data/archiso/airootfs/etc/systemd/system/multi-user.target.wants/NetworkManager.service
 
-            # 5. Создаем .desktop файл для авто-запуска Calamares
+            # 5. Автозапуск Calamares
             mkdir -p /data/archiso/airootfs/root/.config/autostart
             mkdir -p /data/archiso/airootfs/root/Desktop
             echo -e '[Desktop Entry]\nName=Install DevOS\nExec=sudo calamares\nType=Application\nIcon=system-installer' > /data/archiso/airootfs/root/Desktop/install.desktop
@@ -68,7 +70,7 @@ jobs:
           tag_name: test-build-${{ github.run_number }}
           name: "Test Build ${{ github.run_number }} (arch branch)"
           body: |
-            Автоматическая тестовая сборка из ветки `arch` с использованием профиля `releng`.
+            Автоматическая тестовая сборка из ветки `arch`.
             Commit: `${{ github.sha }}`
           files: |
             out/archlinux-*.iso
