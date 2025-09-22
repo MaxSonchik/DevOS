@@ -35,7 +35,7 @@ jobs:
 
             # 2. Добавляем наш репозиторий и пакеты. Убираем ненужный xorg-xinit.
             echo -e \"\n[devos-repo]\nSigLevel = Optional TrustAll\nServer = file:///data/repo\" >> /data/archiso/pacman.conf
-            echo -e \"\n# DevOS Packages\ncalamares\ndevos-tools-core\ngdm\ngnome-shell\ngnome-terminal\ngnome-control-center\nnautilus\nfirefox\n\" >> /data/archiso/packages.x86_64
+            echo -e \"\n# DevOS Packages\ncalamares\nyaml-cpp\ndevos-tools-core\ngdm\ngnome-shell\ngnome-terminal\ngnome-control-center\nnautilus\nfirefox\n\" >> /data/archiso/packages.x86_64
 
             # --- !!! НОВАЯ, ПРАВИЛЬНАЯ И ФИНАЛЬНАЯ МАГИЯ !!! ---
             echo '--- Customizing Live Environment for GDM Auto-Login ---'
