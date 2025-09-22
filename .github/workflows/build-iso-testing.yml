@@ -33,28 +33,23 @@ jobs:
             sed -i 's/archisolabel=\${iso_label}/archisolabel=DEVOS/g' /data/archiso/grub/grub.cfg
             sed -i 's/archisolabel=\${iso_label}/archisolabel=DEVOS/g' /data/archiso/syslinux/archiso_sys.cfg
 
-            # 2. Добавляем наш репозиторий и пакеты
+            # 2. Добавляем наш репозиторий и пакеты. Убираем ненужный xorg-xinit.
             echo -e \"\n[devos-repo]\nSigLevel = Optional TrustAll\nServer = file:///data/repo\" >> /data/archiso/pacman.conf
-            # --- ИЗМЕНЕНИЕ 1: Добавляем xorg-xinit, чтобы команда startx в принципе существовала ---
-            echo -e \"\n# DevOS Packages\ncalamares\ndevos-tools-core\ngdm\ngnome-shell\ngnome-terminal\ngnome-control-center\nnautilus\nfirefox\nxorg-xinit\n\" >> /data/archiso/packages.x86_64
+            echo -e \"\n# DevOS Packages\ncalamares\ndevos-tools-core\ngdm\ngnome-shell\ngnome-terminal\ngnome-control-center\nnautilus\nfirefox\n\" >> /data/archiso/packages.x86_64
 
-            echo '--- Customizing Live Environment for Auto-Login ---'
-            # 3. Настраиваем getty@tty1 для автоматического входа пользователя root
-            mkdir -p /data/archiso/airootfs/etc/systemd/system/getty@tty1.service.d
-            echo -e '[Service]\nExecStart=\nExecStart=-/usr/bin/agetty --autologin root --noclear %I \$TERM' > /data/archiso/airootfs/etc/systemd/system/getty@tty1.service.d/autologin.conf
+            # --- !!! НОВАЯ, ПРАВИЛЬНАЯ И ФИНАЛЬНАЯ МАГИЯ !!! ---
+            echo '--- Customizing Live Environment for GDM Auto-Login ---'
 
-            # --- ИЗМЕНЕНИЕ 2: Пишем в правильный файл (.zprofile) для zsh ---
-            # 4. Добавляем в .zprofile пользователя root команду для запуска GNOME
-            echo -e 'if [[ -z \$DISPLAY && \$(fgconsole 2>/dev/null) -eq 1 ]]; then\n  exec startx\nfi' >> /data/archiso/airootfs/root/.zprofile
-            
-            # 5. Создаем файл .xinitrc для root, чтобы startx знал, что запускать
-            echo -e 'exec gnome-session' > /data/archiso/airootfs/root/.xinitrc
+            # 3. Создаем конфигурацию для GDM, чтобы он автоматически логинил root
+            mkdir -p /data/archiso/airootfs/etc/gdm
+            echo -e '[daemon]\nAutomaticLoginEnable=true\nAutomaticLogin=root' > /data/archiso/airootfs/etc/gdm/custom.conf
 
-            # 6. Включаем NetworkManager
+            # 4. Включаем сервисы GDM и NetworkManager
             mkdir -p /data/archiso/airootfs/etc/systemd/system/multi-user.target.wants
+            ln -sf /usr/lib/systemd/system/gdm.service /data/archiso/airootfs/etc/systemd/system/multi-user.target.wants/gdm.service
             ln -sf /usr/lib/systemd/system/NetworkManager.service /data/archiso/airootfs/etc/systemd/system/multi-user.target.wants/NetworkManager.service
 
-            # 7. Создаем .desktop файл для авто-запуска Calamares
+            # 5. Создаем .desktop файл для авто-запуска Calamares (это остается)
             mkdir -p /data/archiso/airootfs/root/.config/autostart
             echo -e '[Desktop Entry]\nName=Calamares\nExec=calamares_polkit\nType=Application\nIcon=calamares' > /data/archiso/airootfs/root/.config/autostart/calamares.desktop
 
@@ -71,7 +66,7 @@ jobs:
           tag_name: test-build-${{ github.run_number }}
           name: "Test Build ${{ github.run_number }} (arch branch)"
           body: |
-            Автоматическая тестовая сборка из ветки `arch`.
+            Автоматическая тестовая сборка из ветки `arch` с использованием профиля `releng`.
             Commit: `${{ github.sha }}`
           files: |
             out/archlinux-*.iso
