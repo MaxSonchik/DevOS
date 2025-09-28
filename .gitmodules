@@ -1,0 +1,3 @@
+[submodule "src/d-word"]
+	path = src/d-word
+	url = https://github.com/AleksandraBulycheva/d-word
