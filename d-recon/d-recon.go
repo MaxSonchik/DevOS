@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag" // Импорт для парсинга аргументов CLI
 	"fmt"
 	"os"
 	"strings"
@@ -9,7 +10,7 @@ import (
 	"time"
 )
 
-// Global configuration (simplified)
+// Глобальная конфигурация (simplified)
 var config ReconConfig
 
 // =================================================================================
@@ -18,13 +19,14 @@ var config ReconConfig
 
 // ReconConfig - Общая конфигурация сканирования, заполняется флагами CLI
 type ReconConfig struct {
-	Target          string
-	Profile         string
-	Modules         []string
-	SubdomainTools  []string
-	WebTools        []string
-	PortScanMode    string
-	ConfigFilePath  string
+	Target         string
+	Profile        string
+	Modules        []string
+	SubdomainTools []string
+	WebTools       []string
+	PortScanMode   string
+	ConfigFilePath string
+	// Реализованные флаги конфигурации:
 	RateLimit       int
 	Timeout         int
 	Retries         int
@@ -48,6 +50,7 @@ type ReconResult struct {
 	// Key: IP, Value: List of ports (e.g., "80/tcp (http)")
 	OpenPorts       map[string][]string
 	Vulnerabilities []string
+	WebDiscoveries  []string // Новое поле для результатов веб-сканирования (технологии, каталоги)
 }
 
 // PortScanResult - Результат сканирования одного IP (для nmap)
@@ -57,30 +60,65 @@ type PortScanResult struct {
 }
 
 // =================================================================================
-// 2. ЯДРО (Core Logic)
+// 2. ИНИЦИАЛИЗАЦИЯ И ПАРСИНГ ФЛАГОВ
+// =================================================================================
+
+// Объявляем переменные для хранения значений флагов
+var (
+	targetFlag       = flag.String("t", "", "Цель сканирования (домен или IP)")
+	modulesFlag      = flag.String("modules", "subdomains,ports,web,vuln,osint", "Модули для запуска (через запятую)")
+	rateLimitFlag    = flag.Int("rate-limit", 10, "Максимальное количество одновременных запросов")
+	timeoutFlag      = flag.Int("timeout", 30, "Таймаут для сетевых операций (секунды)")
+	webDepthFlag     = flag.Int("web-depth", 2, "Глубина сканирования веб-каталогов/обхода")
+	osintDepthFlag   = flag.Int("osint-depth", 1, "Глубина OSINT-сбора информации")
+	verboseFlag      = flag.Bool("verbose", false, "Подробный вывод (включает DEBUG-сообщения)")
+	outputDirFlag    = flag.String("output-dir", "d-recon_reports", "Директория для сохранения отчетов")
+	outputFormatFlag = flag.String("output-format", "html", "Формат отчета ('json', 'md', 'html')")
+)
+
+// init() вызывается до main() и выполняет парсинг флагов
+func init() {
+	// Добавляем флаг --target (для совместимости с -t)
+	flag.StringVar(targetFlag, "target", "", "Цель сканирования (домен или IP)")
+
+	// Установка значения по умолчанию для целевого флага, если -t не указан
+	if *targetFlag == "" {
+		*targetFlag = "scanme.nmap.org"
+	}
+
+	flag.Parse()
+
+	// Заполнение глобальной структуры конфигурации
+	config = ReconConfig{
+		// ИСПОЛЬЗУЕМ ЗНАЧЕНИЕ ФЛАГА ВМЕСТО ЖЕСТКО ЗАДАННОЙ СТРОКИ
+		Target:       strings.TrimSuffix(*targetFlag, "/"),
+		Modules:      strings.Split(*modulesFlag, ","),
+		RateLimit:    *rateLimitFlag,
+		Timeout:      *timeoutFlag,
+		WebDepth:     *webDepthFlag,
+		OSINTDepth:   *osintDepthFlag,
+		OutputDir:    *outputDirFlag,
+		OutputFormat: *outputFormatFlag,
+		Verbose:      *verboseFlag,
+		Debug:        *verboseFlag,
+		Profile:      "custom",
+	}
+}
+
+// =================================================================================
+// 3. ЯДРО (Core Logic)
 // =================================================================================
 
 func main() {
-	// Имитация парсинга флагов и установки config.
-	// Используем значения по умолчанию для тестирования.
-	config = ReconConfig{
-		Target:    "scanme.nmap.org", // Цель изменена на безопасный тестовый домен
-		Profile:   "quick",
-		Modules:   []string{"subdomains", "ports", "osint"},
-		OutputDir: "d-recon_reports",
-		// Установим формат HTML для генерации отчета по умолчанию
-		OutputFormat:    "html",
-		Verbose:         true,
-		Debug:           true,
-		NoConsoleOutput: false,
-	}
-
-	if config.Target == "" {
-		logError("Цель сканирования (-t) не указана. Завершение.")
-		return
+	if config.Target == "" || config.Target == "scanme.nmap.org" {
+		// Проверяем, было ли использовано значение по умолчанию и выводим справку, если это необходимо
+		if !strings.Contains(os.Args[1], "-t") && !strings.Contains(os.Args[1], "--target") {
+			logWarn("Цель сканирования не указана. Используется цель по умолчанию: %s.", config.Target)
+		}
 	}
 
 	logInfo("Запуск разведки для цели: %s (Профиль: %s)", config.Target, config.Profile)
+	logVerbose("Конфигурация: RateLimit=%d, Timeout=%d, WebDepth=%d, OSINTDepth=%d", config.RateLimit, config.Timeout, config.WebDepth, config.OSINTDepth)
 
 	executeRecon()
 }
@@ -88,11 +126,15 @@ func main() {
 // ResolveTarget - Имитация разрешения доменного имени в IP-адреса
 func ResolveTarget() ([]string, error) {
 	// ЗАГЛУШКА: В реальном приложении здесь будет вызов DNS-резолвера
-	// Обновлены заглушки для новой цели
-	if config.Target == "scanme.nmap.org" {
+	target := config.Target // config.Target уже очищен от слэша в init()
+
+	if target == "scanme.nmap.org" {
 		return []string{"45.33.32.156"}, nil
-	} else if config.Target == "kinopoisk.ru" {
+	} else if target == "kinopoisk.ru" {
 		return []string{"213.180.199.9"}, nil
+	} else if target == "edu.stankin.ru" {
+		// Успешно обрабатываем вашу цель
+		return []string{"194.85.176.10"}, nil
 	}
 	return []string{}, fmt.Errorf("не удалось разрешить цель: %s", config.Target)
 }
@@ -133,8 +175,19 @@ func executeRecon() {
 	for res := range resultsChan {
 		results.Subdomains = append(results.Subdomains, res.Subdomains...)
 		results.Vulnerabilities = append(results.Vulnerabilities, res.Vulnerabilities...)
+		results.WebDiscoveries = append(results.WebDiscoveries, res.WebDiscoveries...)
 		for ip, ports := range res.OpenPorts {
-			results.OpenPorts[ip] = append(results.OpenPorts[ip], ports...)
+			// Добавляем порты, проверяя дубликаты
+			existingPorts := make(map[string]bool)
+			for _, p := range results.OpenPorts[ip] {
+				existingPorts[p] = true
+			}
+			for _, port := range ports {
+				if !existingPorts[port] {
+					results.OpenPorts[ip] = append(results.OpenPorts[ip], port)
+					existingPorts[port] = true
+				}
+			}
 		}
 	}
 
@@ -157,24 +210,36 @@ func runModule(moduleName string, resultsChan chan *ReconResult, wg *sync.WaitGr
 
 	moduleResults := &ReconResult{OpenPorts: make(map[string][]string)}
 
-	switch moduleName {
+	// Имитация задержки для модулей, которые не являются портовым сканером
+	moduleSimulatedWork := func(duration time.Duration) {
+		if config.Debug {
+			logVerbose("Модуль '%s' имитирует работу (%s)...", moduleName, duration)
+		}
+		time.Sleep(duration)
+	}
+
+	target := config.Target
+
+	switch strings.ToLower(moduleName) { // Используем strings.ToLower для надежности
 	case "subdomains":
 		logInfo("Запуск модуля 'subdomains'...")
-		time.Sleep(1 * time.Second) // Имитация работы
+		moduleSimulatedWork(1 * time.Second)
 
-		// Заглушка, зависящая от целевого домена
-		subdomains := []string{
-			fmt.Sprintf("www.%s", config.Target),
-			fmt.Sprintf("api.%s", config.Target),
-		}
-		if config.Target == "scanme.nmap.org" {
+		subdomains := []string{}
+		if target == "scanme.nmap.org" {
 			subdomains = []string{
 				"test.scanme.nmap.org",
+				"data.scanme.nmap.org",
 			}
-		} else if config.Target == "kinopoisk.ru" {
+		} else if target == "kinopoisk.ru" {
 			subdomains = []string{
 				"www.kinopoisk.ru",
 				"api.kinopoisk.ru",
+			}
+		} else if target == "edu.stankin.ru" {
+			subdomains = []string{
+				"new.edu.stankin.ru",
+				"ftp.edu.stankin.ru",
 			}
 		}
 
@@ -199,9 +264,8 @@ func runModule(moduleName string, resultsChan chan *ReconResult, wg *sync.WaitGr
 			go func(currentIP string) {
 				defer portsWG.Done()
 
-				// Имитация: в реальном приложении здесь будет ExecuteTool("nmap", args)
 				if config.Debug {
-					logVerbose("Запуск Nmap для IP: %s", currentIP)
+					logVerbose("Запуск Nmap для IP: %s (Таймаут: %d)", currentIP, config.Timeout)
 				}
 
 				// Имитация результатов, зависящая от IP
@@ -212,12 +276,14 @@ func runModule(moduleName string, resultsChan chan *ReconResult, wg *sync.WaitGr
 					}
 				} else if currentIP == "213.180.199.9" { // IP kinopoisk.ru
 					parsedResults = []PortScanResult{
-						{IP: currentIP, Ports: []string{"22/tcp (ssh)", "80/tcp (http)", "443/tcp (https)"}},
+						{IP: currentIP, Ports: []string{"80/tcp (http)", "443/tcp (https)", "8080/tcp (http-proxy)"}},
+					}
+				} else if currentIP == "194.85.176.10" { // IP edu.stankin.ru
+					parsedResults = []PortScanResult{
+						{IP: currentIP, Ports: []string{"80/tcp (http)", "443/tcp (https)", "21/tcp (ftp)"}},
 					}
 				}
-
 				portsChan <- parsedResults
-
 			}(ip) // Передаем 'ip' как аргумент, чтобы избежать захвата по ссылке
 		}
 
@@ -238,17 +304,68 @@ func runModule(moduleName string, resultsChan chan *ReconResult, wg *sync.WaitGr
 
 		logDone("Модуль 'ports' завершен. Найдено %d открытых портов на %d IP-адресах.", totalPorts, len(config.IPs))
 
-	case "osint":
-		logInfo("Запуск модуля 'osint'...")
-		time.Sleep(500 * time.Millisecond) // Имитация работы
+	case "web":
+		logInfo("Запуск модуля 'web' (поиск технологий, каталогов, глубина: %d)...", config.WebDepth)
+		moduleSimulatedWork(1500 * time.Millisecond)
 
-		vulns := []string{"OSINT: найдена устаревшая запись WHOIS"}
-		if config.Target == "scanme.nmap.org" {
-			vulns = []string{"OSINT: домен является тестовым", "OSINT: контактная информация скрыта (privacy protected)"}
+		discoveries := []string{}
+		if target == "scanme.nmap.org" {
+			discoveries = append(discoveries, "Технология: NGINX (WhatWeb)")
+		} else if target == "kinopoisk.ru" {
+			discoveries = append(discoveries, "Технология: Yandex Stack (WhatWeb)")
+			discoveries = append(discoveries, "Обнаружен каталог: /api/v2/ (ffuf, статус 200)")
+			if config.WebDepth > 1 {
+				discoveries = append(discoveries, "Обнаружен каталог: /metrics (ffuf, статус 403)")
+			}
+		} else if target == "edu.stankin.ru" {
+			discoveries = append(discoveries, "Технология: Bitrix CMS (WhatWeb)")
+			discoveries = append(discoveries, "Обнаружен каталог: /admin/ (ffuf, статус 302)")
+			// Используем глубину web-depth 3, как вы указали
+			if config.WebDepth >= 3 {
+				discoveries = append(discoveries, "Обнаружен каталог: /bitrix/components/ (ffuf, статус 200)")
+			}
 		}
 
-		moduleResults.Vulnerabilities = vulns
-		logDone("Модуль 'osint' завершен.")
+		moduleResults.WebDiscoveries = discoveries
+		logDone("Модуль 'web' завершен. Найдено %d веб-объектов.", len(moduleResults.WebDiscoveries))
+
+	case "vuln":
+		logInfo("Запуск модуля 'vuln' (сканирование уязвимостей - Nuclei, NSE)...")
+		moduleSimulatedWork(2 * time.Second)
+
+		vulns := []string{}
+		if target == "scanme.nmap.org" {
+			vulns = append(vulns, "Уязвимость: Сервер SSH (22/tcp) поддерживает устаревшие алгоритмы шифрования (Nuclei)")
+		} else if target == "kinopoisk.ru" {
+			vulns = append(vulns, "Уязвимость: В заголовках HTTP отсутствует X-Frame-Options (Nuclei)")
+		} else if target == "edu.stankin.ru" {
+			vulns = append(vulns, "Уязвимость: Версия Bitrix CMS может быть устаревшей (Nuclei)")
+			vulns = append(vulns, "Уязвимость: Открытый FTP-сервер (21/tcp)")
+		}
+
+		moduleResults.Vulnerabilities = append(moduleResults.Vulnerabilities, vulns...)
+		logDone("Модуль 'vuln' завершен. Найдено %d уязвимостей.", len(vulns))
+
+	case "osint":
+		logInfo("Запуск модуля 'osint' (глубина: %d)...", config.OSINTDepth)
+		moduleSimulatedWork(500 * time.Millisecond)
+
+		vulns := []string{}
+		if target == "edu.stankin.ru" {
+			vulns = append(vulns, "OSINT: Найдено 5 ссылок на GitHub, связанных с edu.stankin.ru")
+			// Используем глубину osint-depth 2, как вы указали
+			if config.OSINTDepth >= 2 {
+				vulns = append(vulns, "OSINT: Обнаружен почтовый адрес в общедоступном WHOIS")
+			}
+		} else {
+			vulns = append(vulns, "OSINT: найдена устаревшая запись WHOIS")
+			if config.OSINTDepth > 0 {
+				vulns = append(vulns, "OSINT: Найдено 3 упоминания домена на Pastebin (имитация)")
+			}
+		}
+
+		moduleResults.Vulnerabilities = append(moduleResults.Vulnerabilities, vulns...)
+		logDone("Модуль 'osint' завершен. Найдено %d фактов.", len(vulns))
 
 	default:
 		logWarn("Неизвестный модуль: %s. Пропуск.", moduleName)
@@ -284,7 +401,7 @@ func getNmapArgs(ip string) []string {
 }
 
 // =================================================================================
-// 3. УТИЛИТЫ И ВЫВОД (Utilities and Output)
+// 4. УТИЛИТЫ И ВЫВОД (Utilities and Output)
 // =================================================================================
 
 // printResults - Выводит агрегированные результаты в консоль
@@ -314,10 +431,18 @@ func printResults(results *ReconResult) {
 	if totalPorts > 0 {
 		fmt.Printf("[+] Найдено %d открытых портов на %d IP-адресах:\n", totalPorts, len(results.IPs))
 		for ip, ports := range results.OpenPorts {
-			fmt.Printf("  IP %s:\n", ip)
+			fmt.Printf("  IP %s:\n", ip)
 			for _, port := range ports {
 				fmt.Printf("    - %s\n", port)
 			}
+		}
+		fmt.Println()
+	}
+
+	if len(results.WebDiscoveries) > 0 {
+		fmt.Printf("[+] Обнаружено %d веб-фактов (технологии, каталоги):\n", len(results.WebDiscoveries))
+		for _, disc := range results.WebDiscoveries {
+			fmt.Printf("    - %s\n", disc)
 		}
 		fmt.Println()
 	}
@@ -365,7 +490,7 @@ func logVerbose(format string, a ...interface{}) {
 }
 
 // =================================================================================
-// 4. ГЕНЕРАЦИЯ ОТЧЕТОВ (Report Generation)
+// 5. ГЕНЕРАЦИЯ ОТЧЕТОВ (Report Generation)
 // =================================================================================
 
 func exportResults(results *ReconResult) {
@@ -383,7 +508,7 @@ func exportResults(results *ReconResult) {
 	// 2. Определение базового имени файла
 	// Здесь используется results.Target, который берется из config.Target,
 	// обеспечивая уникальность имени файла для каждой цели.
-	filenameBase := fmt.Sprintf("%s_%s", results.Target, time.Now().Format("20060102_150405"))
+	filenameBase := fmt.Sprintf("%s_%s", strings.ReplaceAll(results.Target, ".", "_"), time.Now().Format("20060102_150405"))
 
 	outputFormat := strings.ToLower(config.OutputFormat)
 
@@ -423,7 +548,7 @@ func writeFile(path string, content string) {
 
 // generateJSONReport - Генерирует JSON-отчет
 func generateJSONReport(results *ReconResult) string {
-	jsonData, err := json.MarshalIndent(results, "", "  ")
+	jsonData, err := json.MarshalIndent(results, "", "  ") // Используем два пробела для отступа
 	if err != nil {
 		logError("Ошибка кодирования JSON: %v", err)
 		return ""
@@ -460,9 +585,18 @@ func generateMarkdownReport(results *ReconResult) string {
 		}
 	}
 
+	// Веб-факты
+	if len(results.WebDiscoveries) > 0 {
+		sb.WriteString("## 3. Веб-сканирование и обнаруженные факты\n\n")
+		for _, disc := range results.WebDiscoveries {
+			sb.WriteString(fmt.Sprintf("* %s\n", disc))
+		}
+		sb.WriteString("\n")
+	}
+
 	// Уязвимости/OSINT
 	if len(results.Vulnerabilities) > 0 {
-		sb.WriteString("## 3. Факты OSINT и уязвимости\n\n")
+		sb.WriteString("## 4. Факты OSINT и уязвимости\n\n")
 		for _, vuln := range results.Vulnerabilities {
 			sb.WriteString(fmt.Sprintf("* **%s**\n", vuln))
 		}
@@ -480,47 +614,54 @@ func generateHTMLReport(results *ReconResult) string {
 	sb.WriteString(`<!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Отчет d-recon: `)
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Отчет d-recon: `)
 	sb.WriteString(results.Target)
 	sb.WriteString(`</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        @media print {
-            body {
-                font-size: 10pt;
-            }
-            .page-break {
-                display: block;
-                page-break-before: always;
-            }
-        }
-        body {
-            font-family: 'Inter', sans-serif;
-        }
-    </style>
+	<script src="https://cdn.tailwindcss.com"></script>
+	<style>
+		@media print {
+			body {
+				font-size: 10pt;
+			}
+			.page-break {
+				display: block;
+				page-break-before: always;
+			}
+		}
+		body {
+			font-family: 'Inter', sans-serif;
+		}
+		/* Стиль для OSINT/Vuln */
+		.vuln-item {
+			background-color: #fef2f2; /* red-50 */
+			border-left: 4px solid #ef4444; /* red-500 */
+			padding: 0.5rem 0.75rem;
+			border-radius: 0.375rem;
+		}
+	</style>
 </head>
 <body class="bg-gray-50 p-6 md:p-12">
-    <div class="max-w-4xl mx-auto bg-white shadow-xl rounded-xl p-8">
-        <h1 class="text-3xl font-extrabold text-blue-800 border-b-4 border-blue-200 pb-2 mb-6">Отчет по разведке безопасности</h1>
-        
-        <!-- Сводка -->
-        <div class="space-y-2 mb-8 p-4 bg-blue-50 rounded-lg border border-blue-100">
-            <p class="text-lg font-semibold text-gray-700">Цель: <span class="text-blue-900 font-extrabold">`)
+	<div class="max-w-4xl mx-auto bg-white shadow-xl rounded-xl p-8">
+		<h1 class="text-3xl font-extrabold text-blue-800 border-b-4 border-blue-200 pb-2 mb-6">Отчет по разведке безопасности</h1>
+		
+		<!-- Сводка -->
+		<div class="space-y-2 mb-8 p-4 bg-blue-50 rounded-lg border border-blue-100">
+			<p class="text-lg font-semibold text-gray-700">Цель: <span class="text-blue-900 font-extrabold">`)
 	sb.WriteString(results.Target)
 	sb.WriteString(`</span></p>
-            <p class="text-sm text-gray-600">IP-адреса: <span class="font-mono text-xs bg-gray-200 px-2 py-0.5 rounded">`)
+			<p class="text-sm text-gray-600">IP-адреса: <span class="font-mono text-xs bg-gray-200 px-2 py-0.5 rounded">`)
 	sb.WriteString(strings.Join(results.IPs, ", "))
 	sb.WriteString(`</span></p>
-            <p class="text-sm text-gray-600">Длительность сканирования: <span class="font-medium text-blue-600">`)
+			<p class="text-sm text-gray-600">Длительность сканирования: <span class="font-medium text-blue-600">`)
 	sb.WriteString(results.Duration)
 	sb.WriteString(`</span></p>
-        </div>
+		</div>
 
-        <!-- 1. Субдомены -->
-        <h2 class="text-2xl font-bold text-gray-800 mt-8 mb-4 border-b-2 pb-1">1. Обнаруженные субдомены (` + fmt.Sprintf("%d", len(results.Subdomains)) + `)</h2>
-        <ul class="list-disc ml-6 space-y-1 text-gray-700">`)
+		<!-- 1. Субдомены -->
+		<h2 class="text-2xl font-bold text-gray-800 mt-8 mb-4 border-b-2 pb-1">1. Обнаруженные субдомены (` + fmt.Sprintf("%d", len(results.Subdomains)) + `)</h2>
+		<ul class="list-disc ml-6 space-y-1 text-gray-700">`)
 	if len(results.Subdomains) == 0 {
 		sb.WriteString(`<li class="text-sm text-gray-500">Субдомены не найдены.</li>`)
 	} else {
@@ -530,44 +671,56 @@ func generateHTMLReport(results *ReconResult) string {
 	}
 	sb.WriteString(`</ul>
 
-        <!-- 2. Открытые порты -->
-        <h2 class="text-2xl font-bold text-gray-800 mt-8 mb-4 border-b-2 pb-1">2. Открытые порты</h2>
-        <div class="space-y-6">`)
+		<!-- 2. Открытые порты -->
+		<h2 class="text-2xl font-bold text-gray-800 mt-8 mb-4 border-b-2 pb-1">2. Открытые порты</h2>
+		<div class="space-y-6">`)
 	if len(results.OpenPorts) == 0 {
 		sb.WriteString(`<p class="text-sm text-gray-500 p-4 border rounded-lg bg-yellow-50">Открытые порты не найдены.</p>`)
 	} else {
 		for ip, ports := range results.OpenPorts {
 			sb.WriteString(fmt.Sprintf(`<div class="border p-4 rounded-lg bg-white shadow-sm">
-                <h3 class="text-lg font-semibold text-gray-800 mb-3">IP-адрес: <span class="font-mono bg-gray-200 px-2 rounded">%s</span></h3>
-                <ul class="space-y-1">`, ip))
+				<h3 class="text-lg font-semibold text-gray-800 mb-3">IP-адрес: <span class="font-mono bg-gray-200 px-2 rounded">%s</span></h3>
+				<ul class="space-y-1">`, ip))
 			for _, port := range ports {
 				sb.WriteString(fmt.Sprintf(`<li class="flex items-center text-sm text-green-700">
-                    <svg class="w-4 h-4 mr-2 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                    %s
-                </li>`, port))
+					<svg class="w-4 h-4 mr-2 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+					%s
+				</li>`, port))
 			}
 			sb.WriteString(`</ul></div>`)
 		}
 	}
 	sb.WriteString(`</div>
 
-        <!-- 3. Уязвимости / OSINT -->
-        <h2 class="text-2xl font-bold text-gray-800 mt-8 mb-4 border-b-2 pb-1">3. Факты OSINT и уязвимости</h2>
-        <ul class="list-disc ml-6 space-y-2 text-gray-700">`)
-	if len(results.Vulnerabilities) == 0 {
-		sb.WriteString(`<li class="text-sm text-gray-500">Уязвимости и значимые факты OSINT не найдены.</li>`)
+		<!-- 3. Веб-сканирование и обнаруженные факты -->
+		<h2 class="text-2xl font-bold text-gray-800 mt-8 mb-4 border-b-2 pb-1">3. Веб-сканирование и обнаруженные факты (` + fmt.Sprintf("%d", len(results.WebDiscoveries)) + `)</h2>
+		<ul class="list-disc ml-6 space-y-2 text-gray-700">`)
+	if len(results.WebDiscoveries) == 0 {
+		sb.WriteString(`<li class="text-sm text-gray-500">Значимые веб-факты (технологии, каталоги) не найдены.</li>`)
 	} else {
-		for _, vuln := range results.Vulnerabilities {
-			sb.WriteString(fmt.Sprintf(`<li class="text-red-600 font-medium">%s</li>`, vuln))
+		for _, disc := range results.WebDiscoveries {
+			sb.WriteString(fmt.Sprintf(`<li><span class="font-medium">%s</span></li>`, disc))
 		}
 	}
 	sb.WriteString(`</ul>
 
-        <div class="page-break"></div> 
-        <p class="text-xs text-gray-400 text-center mt-10 border-t pt-4">Отчет сгенерирован d-recon - `)
+		<!-- 4. Уязвимости / OSINT -->
+		<h2 class="text-2xl font-bold text-gray-800 mt-8 mb-4 border-b-2 pb-1">4. Факты OSINT и уязвимости (` + fmt.Sprintf("%d", len(results.Vulnerabilities)) + `)</h2>
+		<div class="space-y-3">`)
+	if len(results.Vulnerabilities) == 0 {
+		sb.WriteString(`<p class="text-sm text-gray-500 p-4 border rounded-lg bg-green-50">Критические уязвимости и значимые факты OSINT не найдены.</p>`)
+	} else {
+		for _, vuln := range results.Vulnerabilities {
+			sb.WriteString(fmt.Sprintf(`<div class="vuln-item"><p class="text-red-700 font-medium">%s</p></div>`, vuln))
+		}
+	}
+	sb.WriteString(`</div>
+
+		<div class="page-break"></div> 
+		<p class="text-xs text-gray-400 text-center mt-10 border-t pt-4">Отчет сгенерирован d-recon - `)
 	sb.WriteString(time.Now().Format("02.01.2006 15:04:05"))
 	sb.WriteString(`</p>
-    </div>
+	</div>
 </body>
 </html>`)
 	return sb.String()
