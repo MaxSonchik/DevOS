@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scan Results - {{.Target}}</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><a href="/">d-recon</a> 🕵️‍♂️</h1>
+            <h2>Scan Results: {{.Target}}</h2>
+        </header>
+
+        <div class="scan-overview">
+            <div class="overview-card">
+                <h3>Scan Overview</h3>
+                <div id="overview-info"></div>
+            </div>
+        </div>
+
+        <div class="modules-grid">
+            <div class="module-card" id="subdomains-card">
+                <h3>Subdomains</h3>
+                <div class="module-content"></div>
+            </div>
+            <div class="module-card" id="ports-card">
+                <h3>Ports</h3>
+                <div class="module-content"></div>
+            </div>
+            <div class="module-card" id="web-card">
+                <h3>Web Services</h3>
+                <div class="module-content"></div>
+            </div>
+            <div class="module-card" id="osint-card">
+                <h3>OSINT</h3>
+                <div class="module-content"></div>
+            </div>
+        </div>
+
+        <div class="export-section">
+            <button onclick="exportReport('json')">Export JSON</button>
+            <button onclick="exportReport('html')">Export HTML</button>
+        </div>
+    </div>
+
+    <script src="/static/js/scan.js"></script>
+</body>
+</html>
